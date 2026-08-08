@@ -1,7 +1,7 @@
-# VCT — 极简可视化视频转码工具
+# VCT (Video Converter)— 极简可视化视频转码工具
 
-基于 **Tauri v2 + Vue 3 + TypeScript + Vite** 与内置 **FFmpeg sidecar** 的桌面端视频转码应用。
-将 MP4 等视频高效转换为 **H.265 (HEVC)** 或 **AV1** 编码，支持硬件加速检测与可视化进度。
+让小白也能上手操作的极简可视化视频转码工具。基于 **Tauri v2 + Vue 3 + TypeScript + Vite** 与内置 **FFmpeg sidecar** 的桌面端视频转码应用。
+将 h.264编码的MP4... 等视频高效转换为 **H.265 (HEVC)** 或 **AV1** 编码，支持硬件加速检测与可视化进度。
 
 ![tech](https://img.shields.io/badge/Tauri-v2-orange) ![tech](https://img.shields.io/badge/Vue-3-brightgreen) ![tech](https://img.shields.io/badge/Rust-stable-dea584) ![tech](https://img.shields.io/badge/FFmpeg-sidecar-blueviolet)
 
@@ -214,13 +214,12 @@ npm run build:tauri
 | H.265/HEVC | `hevc_nvenc` (NVIDIA) · `hevc_qsv` (Intel) · `hevc_amf` (AMD) | `libx265` |
 | AV1 | `av1_nvenc` (NVIDIA) · `av1_qsv` (Intel) · `av1_amf` (AMD) | `libsvtav1` |
 
-## 开发阶段进度
 
-- [x] **Step 1**：项目结构 + 现代 UI 框架与核心布局
-- [x] **Step 2**：FFmpeg 进程封装 + 命令生成 + 硬件检测
-- [x] **Step 3**：输出日志实时解析 + 进度提取 + UI 响应式
-- [x] **Step 4**：多任务队列 + 错误捕捉 + 完成通知
 
 ## License
 
-MIT
+本项目基于 [Apache License 2.0](./LICENSE) 开源。
+
+Copyright 2026 McMillanLi
+
+> 注意：本项目内置并调用 FFmpeg（基于 GPLv2+/LGPL 协议）作为 sidecar 二进制。FFmpeg 二进制本身遵循其各自协议，使用者需自行遵守 FFmpeg 的许可条款。

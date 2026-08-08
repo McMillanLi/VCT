@@ -3,6 +3,7 @@ name = "vct"
 version = "0.1.0"
 description = "VCT - 极简可视化的 FFmpeg 视频转码工具"
 authors = ["VCT"]
+license = "Apache-2.0"
 edition = "2021"
 rust-version = "1.70"
 
