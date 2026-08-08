@@ -1,0 +1,72 @@
+/* ===== VCT 设计令牌（Design Tokens） ===== */
+:root {
+  /* 背景层级 */
+  --bg-base: #0f1115;
+  --bg-surface: #161922;
+  --bg-elevated: #1d212c;
+  --bg-hover: #242936;
+
+  /* 描边 */
+  --border-subtle: #2a2f3c;
+  --border-strong: #3a4150;
+
+  /* 文本 */
+  --text-primary: #f0f2f5;
+  --text-secondary: #a8b0bd;
+  --text-tertiary: #6b7280;
+
+  /* 主强调色（H.265 - 靛紫） */
+  --accent-h265: #7c6cff;
+  --accent-h265-soft: rgba(124, 108, 255, 0.15);
+
+  /* 次强调色（AV1 - 翠绿） */
+  --accent-av1: #2dd4a7;
+  --accent-av1-soft: rgba(45, 212, 167, 0.15);
+
+  /* 通用强调（按钮主操作） */
+  --accent: #6d5efc;
+  --accent-hover: #8275ff;
+  --accent-pressed: #5a4de0;
+  --accent-soft: rgba(109, 94, 252, 0.14);
+
+  /* 状态色 */
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-error: #f87171;
+  --status-info: #60a5fa;
+
+  /* 进度条轨道 */
+  --track: #2a2f3c;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 8px 24px rgba(109, 94, 252, 0.25);
+
+  /* 动效 */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration: 200ms;
+  --duration-slow: 360ms;
+
+  /* 字体 */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
