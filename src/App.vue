@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Step 4: 多任务队列 + 错误捕捉 + 完成通知
 import { onMounted } from "vue";
 import TitleBar from "@/components/TitleBar.vue";
 import DropZone from "@/components/DropZone.vue";

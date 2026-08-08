@@ -5,7 +5,7 @@ import { useApp } from "@/stores/app";
 import { isTauri } from "@/api/backend";
 import type { TargetCodec, Preset } from "@/types";
 
-const { state, recommendedEncoder, isHardwareAccel } = useApp();
+const { state, recommendedEncoder, isHardwareAccel, setNotificationsEnabled } = useApp();
 
 const codecs: { value: TargetCodec; label: string; sub: string }[] = [
   { value: "h265", label: "H.265", sub: "HEVC · 高压缩" },
@@ -120,6 +120,24 @@ async function pickOutputDir() {
           <button class="btn btn-ghost path-btn" @click="pickOutputDir">浏览…</button>
         </div>
       </div>
+    </div>
+
+    <div class="divider" />
+
+    <!-- 完成通知 -->
+    <div class="config-row">
+      <div class="config-label">
+        <span class="label-text">完成通知</span>
+        <span class="label-hint">转码完成后推送系统桌面通知</span>
+      </div>
+      <button
+        class="toggle-switch"
+        :class="{ on: state.notificationsEnabled }"
+        :title="state.notificationsEnabled ? '点击关闭' : '点击开启'"
+        @click="setNotificationsEnabled(!state.notificationsEnabled)"
+      >
+        <span class="toggle-knob" />
+      </button>
     </div>
   </section>
 </template>
@@ -305,5 +323,35 @@ async function pickOutputDir() {
 .path-btn {
   padding: 7px 12px;
   font-size: 12px;
+}
+
+/* 通知开关 */
+.toggle-switch {
+  width: 42px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--track);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+  flex-shrink: 0;
+}
+.toggle-switch.on {
+  background: var(--accent);
+}
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--duration-fast) var(--ease);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-switch.on .toggle-knob {
+  transform: translateX(18px);
 }
 </style>

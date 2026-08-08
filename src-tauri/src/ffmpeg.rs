@@ -123,7 +123,11 @@ const AV1_HW_CANDIDATES: &[&str] = &["av1_nvenc", "av1_qsv", "av1_amf", "av1_mf"
 
 /// 用一段极短的合成视频测试某编码器是否能在运行时真正初始化
 ///
-/// 命令：ffmpeg -f lavfi -i color=black:s=64x64:d=0.04 -frames:v 1 -c:v <enc> -f null -
+/// 命令：ffmpeg -f lavfi -i testsrc2=size=320x240:rate=1 -frames:v 1 -pix_fmt yuv420p
+///       -c:v <enc> -f null -
+///
+/// 注意：尺寸不能太小。NVENC 等硬件编码器有最小帧尺寸要求（约 145px），
+///       64x64 会触发 "Frame dimensions are less than the minimum supported value"。
 /// 退出码 0 视为可用。
 async fn test_encoder(app: &AppHandle, encoder: &str) -> bool {
     let cmd = match ffmpeg_sidecar(app) {
@@ -132,8 +136,9 @@ async fn test_encoder(app: &AppHandle, encoder: &str) -> bool {
     };
     let cmd = cmd.args([
         "-hide_banner", "-nostdin", "-loglevel", "error",
-        "-f", "lavfi", "-i", "color=black:s=64x64:d=0.04",
+        "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=1",
         "-frames:v", "1",
+        "-pix_fmt", "yuv420p",
         "-c:v", encoder,
         "-f", "null", "-",
     ]);
@@ -201,10 +206,12 @@ pub async fn detect_hardware(app: AppHandle) -> Result<HardwareInfo, String> {
         .unwrap_or("cpu")
         .to_string();
 
-    log::info!(
+    let summary = format!(
         "硬件检测完成: vendor={}, h265={}, av1={}, available={:?}",
         gpu_vendor, recommended_h265, recommended_av1, available
     );
+    log::info!("{}", summary);
+    eprintln!("[VCT] {}", summary);
 
     Ok(HardwareInfo {
         available_encoders: available,
@@ -354,7 +361,7 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
             "-rc".into(), "vbr".into(),
             "-cq".into(), cq.to_string(),
             "-b:v".into(), "0".into(),
-            "-spatial_aq".into(), "1".into(),
+            "-spatial-aq".into(), "1".into(),
         ]);
     } else if enc.contains("qsv") {
         // Intel QSV：ICQ 全局质量
@@ -423,12 +430,13 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
     args.push("-c:a".into());
     args.push("copy".into());
 
-    // ---- 输出文件 ----
-    args.push(input.output_path.clone());
-
-    // ---- 进度输出到 stdout（Step 3 解析）----
+    // ---- 进度输出到 stdout（供 Step 3 progress 解析器实时解析）----
+    // 放在输出文件之前：-progress 是输出级选项，FFmpeg 会将其归属到紧随其后的输出。
     args.push("-progress".into());
     args.push("pipe:1".into());
+
+    // ---- 输出文件（必须是最后一个位置参数）----
+    args.push(input.output_path.clone());
 
     args
 }
@@ -444,4 +452,105 @@ pub async fn build_command(input: BuildCommandInput) -> Result<BuiltCommand, Str
         encoder,
         estimated_quality,
     })
+}
+
+// ========================= 单元测试 =========================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(encoder: &str, preset: &str) -> BuildCommandInput {
+        BuildCommandInput {
+            input_path: "in.mp4".into(),
+            output_path: "out.mp4".into(),
+            target_codec: if encoder.contains("av1") { "av1" } else { "h265" }.into(),
+            preset: preset.into(),
+            encoder: encoder.into(),
+        }
+    }
+
+    /// 辅助：断言 args 中连续包含某段参数
+    fn assert_has(args: &[String], kv: &[&str]) {
+        for i in 0..=args.len().saturating_sub(kv.len()) {
+            let window = &args[i..i + kv.len()];
+            if window.iter().zip(kv.iter()).all(|(a, k)| a.as_str() == *k) {
+                return;
+            }
+        }
+        panic!("参数中未找到 {:?}，实际: {:?}", kv, args);
+    }
+
+    #[test]
+    fn build_args_global_options() {
+        let args = build_args(&input("libx265", "balanced"));
+        assert!(args.contains(&"-hide_banner".into()));
+        assert!(args.contains(&"-nostdin".into()));
+        assert!(args.contains(&"-nostats".into()));
+        assert!(args.contains(&"-y".into()));
+        assert!(args.contains(&"-i".into()));
+        assert!(args.contains(&"-c:a".into()));
+        assert!(args.contains(&"copy".into()));
+        assert!(args.contains(&"-progress".into()));
+        assert!(args.contains(&"pipe:1".into()));
+    }
+
+    #[test]
+    fn build_args_nvenc() {
+        let args = build_args(&input("hevc_nvenc", "balanced"));
+        assert_has(&args, &["-c:v", "hevc_nvenc"]);
+        assert_has(&args, &["-preset", "p5"]);
+        assert_has(&args, &["-rc", "vbr"]);
+        assert_has(&args, &["-cq", "26"]);
+        assert_has(&args, &["-b:v", "0"]);
+    }
+
+    #[test]
+    fn build_args_qsv() {
+        let args = build_args(&input("hevc_qsv", "quality"));
+        assert_has(&args, &["-c:v", "hevc_qsv"]);
+        assert_has(&args, &["-preset", "slow"]);
+        assert_has(&args, &["-global_quality", "20"]);
+    }
+
+    #[test]
+    fn build_args_amf() {
+        let args = build_args(&input("av1_amf", "fast"));
+        assert_has(&args, &["-c:v", "av1_amf"]);
+        assert_has(&args, &["-quality", "speed"]);
+        assert_has(&args, &["-rc", "cqp"]);
+    }
+
+    #[test]
+    fn build_args_libx265() {
+        let args = build_args(&input("libx265", "quality"));
+        assert_has(&args, &["-c:v", "libx265"]);
+        assert_has(&args, &["-preset", "slow"]);
+        assert_has(&args, &["-crf", "20"]);
+        assert!(args.contains(&"-x265-params".into()));
+    }
+
+    #[test]
+    fn build_args_libsvtav1() {
+        let args = build_args(&input("libsvtav1", "fast"));
+        assert_has(&args, &["-c:v", "libsvtav1"]);
+        assert_has(&args, &["-preset", "8"]);
+        assert_has(&args, &["-crf", "32"]);
+    }
+
+    #[test]
+    fn parse_fps_handles_fractions() {
+        assert_eq!(parse_fps("30/1"), 30.0);
+        assert!((parse_fps("30000/1001") - 29.970029).abs() < 1e-6);
+        assert_eq!(parse_fps("24"), 24.0);
+        assert_eq!(parse_fps("0/0"), 0.0);
+    }
+
+    #[test]
+    fn vendor_detection() {
+        assert_eq!(vendor_of("hevc_nvenc"), "nvidia");
+        assert_eq!(vendor_of("av1_qsv"), "intel");
+        assert_eq!(vendor_of("hevc_amf"), "amd");
+        assert_eq!(vendor_of("libx265"), "cpu");
+    }
 }

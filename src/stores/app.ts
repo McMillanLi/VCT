@@ -20,6 +20,8 @@ interface AppState {
   customOutputDir: string;
   /** 是否正在初始化 */
   initializing: boolean;
+  /** 完成时是否推送系统通知 */
+  notificationsEnabled: boolean;
 }
 
 const state = reactive<AppState>({
@@ -31,6 +33,7 @@ const state = reactive<AppState>({
   outputMode: "same-dir",
   customOutputDir: "",
   initializing: false,
+  notificationsEnabled: true,
 });
 
 /** 根据硬件检测结果，返回当前编码目标推荐的编码器 */
@@ -85,6 +88,10 @@ export function useApp() {
     state.outputMode = "custom";
   }
 
+  function setNotificationsEnabled(enabled: boolean) {
+    state.notificationsEnabled = enabled;
+  }
+
   return {
     state,
     recommendedEncoder,
@@ -94,5 +101,6 @@ export function useApp() {
     setPreset,
     setOutputMode,
     setCustomOutputDir,
+    setNotificationsEnabled,
   };
 }

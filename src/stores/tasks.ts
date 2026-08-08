@@ -2,7 +2,7 @@
 //
 // 采用模块级单例：tasks（reactive 数组）与所有 computed 均在模块作用域定义，
 // useTasks() 返回对这些单例的引用，多处调用共享同一状态。
-import { reactive, computed, readonly } from "vue";
+import { reactive, ref, computed } from "vue";
 import {
   startTranscode,
   cancelTranscode,
@@ -11,6 +11,7 @@ import {
 } from "@/api/backend";
 import { useApp } from "@/stores/app";
 import { defaultOutputPath, genTaskId } from "@/utils/format";
+import { notifyTaskCompleted, notifyTaskFailed, notifyAllDone } from "@/utils/notify";
 import type {
   TranscodeTask,
   FileInfo,
@@ -19,6 +20,9 @@ import type {
 } from "@/types";
 
 const tasks = reactive<TranscodeTask[]>([]);
+
+/** 队列暂停标志：暂停后任务完成不再自动续接下一个 */
+const isQueuePaused = ref(false);
 
 // ---- 模块级 computed（单例） ----
 export const hasTasks = computed(() => tasks.length > 0);
@@ -36,6 +40,10 @@ export const overallProgress = computed(() => {
   const sum = tasks.reduce((acc, t) => acc + t.progress, 0);
   return Math.round(sum / tasks.length);
 });
+/** 队列是否全部处理完毕（无运行中、无待处理） */
+export const isAllDone = computed(
+  () => tasks.length > 0 && !activeTask.value && pendingTasks.value.length === 0,
+);
 
 /** 计算输出路径：同目录 or 自定义目录 */
 function computeOutputPath(file: FileInfo): string {
@@ -99,10 +107,21 @@ function clearFinished() {
   }
 }
 
-/** 顺序启动下一个排队任务（Step 4 将完善队列调度） */
+/** 顺序启动下一个排队任务（队列暂停时不续接） */
 function startNextPending() {
+  if (isQueuePaused.value) return;
   const next = tasks.find((t) => t.status === "pending");
   if (next) startTask(next.id);
+}
+
+/** 检查是否全部完成，若是则推送汇总通知 */
+function checkAllDoneAndNotify() {
+  if (isAllDone.value) {
+    const { state } = useApp();
+    if (state.notificationsEnabled) {
+      notifyAllDone(completedCount.value, failedCount.value);
+    }
+  }
 }
 
 /** 启动单个任务 */
@@ -123,16 +142,19 @@ async function startTask(id: string) {
       duration: task.file.duration,
     });
   } catch (e: any) {
+    // invoke 本身抛错（非 ffmpeg 退出码错误），标记失败
     task.status = "failed";
     task.error = String(e?.message ?? e);
     task.finished_at = Date.now();
     startNextPending();
+    checkAllDoneAndNotify();
   }
 }
 
 /** 启动全部待转码任务 */
 function startAll() {
   if (activeTask.value) return; // 已有运行中任务，等其完成自动续接
+  isQueuePaused.value = false;
   startNextPending();
 }
 
@@ -144,6 +166,64 @@ async function cancelTask(id: string) {
   task.status = "canceled";
   task.finished_at = Date.now();
   startNextPending();
+  checkAllDoneAndNotify();
+}
+
+/** 重试失败/已取消的任务：重置为 pending 并尝试启动 */
+function retryTask(id: string) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  if (task.status !== "failed" && task.status !== "canceled") return;
+  task.status = "pending";
+  task.progress = 0;
+  task.speed = 0;
+  task.fps = 0;
+  task.processed_time = 0;
+  task.eta = 0;
+  task.error = "";
+  task.started_at = null;
+  task.finished_at = null;
+  // 若当前无运行中任务则立即启动，否则等队列自动续接
+  if (!activeTask.value) startTask(id);
+}
+
+/** 将任务上移（仅 pending 任务可移动） */
+function moveTaskUp(id: string) {
+  const idx = tasks.findIndex((t) => t.id === id);
+  if (idx <= 0) return;
+  if (tasks[idx].status !== "pending") return;
+  // 与前一个 pending 任务交换位置
+  for (let i = idx - 1; i >= 0; i--) {
+    if (tasks[i].status === "pending") {
+      [tasks[i], tasks[idx]] = [tasks[idx], tasks[i]];
+      return;
+    }
+  }
+}
+
+/** 将任务下移（仅 pending 任务可移动） */
+function moveTaskDown(id: string) {
+  const idx = tasks.findIndex((t) => t.id === id);
+  if (idx < 0 || idx >= tasks.length - 1) return;
+  if (tasks[idx].status !== "pending") return;
+  // 与后一个 pending 任务交换位置
+  for (let i = idx + 1; i < tasks.length; i++) {
+    if (tasks[i].status === "pending") {
+      [tasks[i], tasks[idx]] = [tasks[idx], tasks[i]];
+      return;
+    }
+  }
+}
+
+/** 暂停队列：当前运行中的任务继续，完成后不再自动续接 */
+function pauseQueue() {
+  isQueuePaused.value = true;
+}
+
+/** 恢复队列：继续处理待转码任务 */
+function resumeQueue() {
+  isQueuePaused.value = false;
+  if (!activeTask.value) startNextPending();
 }
 
 // ---- 全局事件订阅（在应用启动时调用一次） ----
@@ -168,7 +248,20 @@ export async function subscribeTaskEvents() {
     if (e.message && e.status === "failed") task.error = e.message;
     if (["completed", "failed", "canceled"].includes(e.status)) {
       task.finished_at = Date.now();
-      startNextPending(); // 完成后自动续接下一个排队任务
+
+      // 推送系统通知
+      const { state } = useApp();
+      if (state.notificationsEnabled) {
+        if (e.status === "completed") {
+          notifyTaskCompleted(task.file.name);
+        } else if (e.status === "failed") {
+          notifyTaskFailed(task.file.name, task.error);
+        }
+      }
+
+      // 续接下一个 + 检查全部完成
+      startNextPending();
+      checkAllDoneAndNotify();
     }
   });
 }
@@ -181,6 +274,8 @@ export function useTasks() {
     pendingTasks,
     activeTask,
     isProcessing,
+    isQueuePaused,
+    isAllDone,
     completedCount,
     failedCount,
     overallProgress,
@@ -191,6 +286,11 @@ export function useTasks() {
     startTask,
     startAll,
     cancelTask,
+    retryTask,
+    moveTaskUp,
+    moveTaskDown,
+    pauseQueue,
+    resumeQueue,
     startNextPending,
   };
 }

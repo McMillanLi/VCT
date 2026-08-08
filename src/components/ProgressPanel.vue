@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Step 4: 队列暂停/恢复 + 全部完成状态
 import { useTasks } from "@/stores/tasks";
 import TaskCard from "@/components/TaskCard.vue";
 
@@ -9,7 +10,11 @@ const {
   failedCount,
   overallProgress,
   isProcessing,
+  isQueuePaused,
+  isAllDone,
   clearFinished,
+  pauseQueue,
+  resumeQueue,
 } = useTasks();
 </script>
 
@@ -21,6 +26,8 @@ const {
         <span class="header-summary">
           共 {{ list.length }} 个 · 已完成 {{ completedCount }}
           <span v-if="failedCount > 0" class="failed-count">· 失败 {{ failedCount }}</span>
+          <span v-if="isQueuePaused" class="paused-tag">· 已暂停</span>
+          <span v-else-if="isAllDone" class="done-tag">· 全部完成</span>
         </span>
       </div>
       <div class="header-right">
@@ -30,6 +37,14 @@ const {
             <div class="overall-fill" :style="{ width: overallProgress + '%' }" />
           </div>
         </div>
+        <!-- 暂停/恢复队列 -->
+        <button
+          v-if="isProcessing || isQueuePaused"
+          class="btn btn-ghost header-pause"
+          @click="isQueuePaused ? resumeQueue() : pauseQueue()"
+        >
+          {{ isQueuePaused ? "恢复队列" : "暂停队列" }}
+        </button>
         <button class="btn btn-ghost header-clear" @click="clearFinished">清理已完成</button>
       </div>
     </div>
@@ -81,10 +96,18 @@ const {
 .failed-count {
   color: var(--status-error);
 }
+.paused-tag {
+  color: var(--status-warning);
+  font-weight: 600;
+}
+.done-tag {
+  color: var(--status-success);
+  font-weight: 600;
+}
 .header-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 .overall {
   display: flex;
@@ -110,6 +133,11 @@ const {
   background: var(--accent);
   border-radius: 3px;
   transition: width 0.4s var(--ease-out);
+}
+.header-pause {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--status-warning);
 }
 .header-clear {
   padding: 5px 10px;

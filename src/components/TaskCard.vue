@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+// Step 4: 重试 + 排序 + 可展开错误详情
+import { computed, ref } from "vue";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useTasks } from "@/stores/tasks";
 import { isTauri } from "@/api/backend";
@@ -13,7 +14,15 @@ import {
 import type { TranscodeTask } from "@/types";
 
 const props = defineProps<{ task: TranscodeTask }>();
-const { removeTask, cancelTask } = useTasks();
+const {
+  removeTask,
+  cancelTask,
+  retryTask,
+  moveTaskUp,
+  moveTaskDown,
+} = useTasks();
+
+const errorExpanded = ref(false);
 
 const statusMeta = computed(() => {
   const map: Record<string, { label: string; color: string }> = {
@@ -28,6 +37,9 @@ const statusMeta = computed(() => {
 });
 
 const isRunning = computed(() => props.task.status === "running");
+const isPending = computed(() => props.task.status === "pending");
+const isFailed = computed(() => props.task.status === "failed" || props.task.status === "canceled");
+const isCompleted = computed(() => props.task.status === "completed");
 const codecBadge = computed(() => (props.task.target_codec === "av1" ? "AV1" : "H.265"));
 
 async function openFolder() {
@@ -70,12 +82,35 @@ async function openFolder() {
           <span v-if="isRunning" class="status-pulse" :style="{ background: statusMeta.color }" />
           {{ statusMeta.label }}
         </span>
+
+        <!-- 排序按钮（仅 pending 任务） -->
+        <template v-if="isPending">
+          <button class="icon-btn" title="上移" @click.stop="moveTaskUp(task.id)">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 3l4 5H2l4-5Z" fill="currentColor" /></svg>
+          </button>
+          <button class="icon-btn" title="下移" @click.stop="moveTaskDown(task.id)">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 9L2 4h8l-4 5Z" fill="currentColor" /></svg>
+          </button>
+        </template>
+
+        <!-- 取消按钮（运行中） -->
         <button v-if="isRunning" class="icon-btn" title="取消" @click="cancelTask(task.id)">
           <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" /></svg>
         </button>
-        <button v-else-if="task.status === 'completed'" class="icon-btn" title="打开所在文件夹" @click="openFolder">
+
+        <!-- 重试按钮（失败/已取消） -->
+        <button v-if="isFailed" class="icon-btn" title="重试" @click="retryTask(task.id)">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M2 7a5 5 0 1 0 1.5-3.5M3.5 3.5V1M3.5 3.5H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+
+        <!-- 打开文件夹（已完成） -->
+        <button v-if="isCompleted" class="icon-btn" title="打开所在文件夹" @click="openFolder">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5Z" stroke="currentColor" stroke-width="1.3" /></svg>
         </button>
+
+        <!-- 移除按钮 -->
         <button class="icon-btn" title="移除" @click="removeTask(task.id)">
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
         </button>
@@ -100,8 +135,20 @@ async function openFolder() {
         <span class="stat">已转 {{ formatDuration(task.processed_time) }}</span>
         <span class="stat">剩余 {{ formatEta(task.eta) }}</span>
       </template>
-      <span v-else-if="task.status === 'completed'" class="stat done">输出 {{ task.output_path.split(/[\\/]/).pop() }}</span>
-      <span v-else-if="task.status === 'failed'" class="stat err" :title="task.error">{{ task.error || "转码失败" }}</span>
+      <span v-else-if="isCompleted" class="stat done">输出 {{ task.output_path.split(/[\\/]/).pop() }}</span>
+      <span
+        v-else-if="task.status === 'failed'"
+        class="stat err clickable"
+        :title="errorExpanded ? '点击收起' : '点击展开详情'"
+        @click="errorExpanded = !errorExpanded"
+      >
+        {{ errorExpanded ? '▲ 收起' : '▼ ' + (task.error || '转码失败').slice(0, 60) }}
+      </span>
+    </div>
+
+    <!-- 展开的错误详情 -->
+    <div v-if="errorExpanded && task.error" class="error-detail">
+      <pre>{{ task.error }}</pre>
     </div>
   </div>
 </template>
@@ -152,7 +199,7 @@ async function openFolder() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 340px;
+  max-width: 300px;
 }
 .file-meta {
   display: flex;
@@ -270,6 +317,31 @@ async function openFolder() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 300px;
+  max-width: 400px;
+}
+.stat.err.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+.stat.err.clickable:hover {
+  text-decoration: underline;
+}
+
+.error-detail {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(248, 113, 113, 0.06);
+  border: 1px solid rgba(248, 113, 113, 0.15);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.error-detail pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--status-error);
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>
