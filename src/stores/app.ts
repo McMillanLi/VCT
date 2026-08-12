@@ -14,6 +14,8 @@ interface AppState {
   targetCodec: TargetCodec;
   /** 当前选择的画质预设 */
   preset: Preset;
+  /** 自定义 CRF/CQ 值（preset 为 custom 时生效） */
+  customCrf: number;
   /** 输出位置模式 */
   outputMode: "same-dir" | "custom";
   /** 自定义输出目录 */
@@ -30,6 +32,7 @@ const state = reactive<AppState>({
   hardware: null,
   targetCodec: "h265",
   preset: "balanced",
+  customCrf: 24,
   outputMode: "same-dir",
   customOutputDir: "",
   initializing: false,
@@ -39,9 +42,14 @@ const state = reactive<AppState>({
 /** 根据硬件检测结果，返回当前编码目标推荐的编码器 */
 export const recommendedEncoder = computed(() => {
   if (!state.hardware) return "libx265";
-  return state.targetCodec === "av1"
-    ? state.hardware.recommended_av1
-    : state.hardware.recommended_h265;
+  switch (state.targetCodec) {
+    case "h264":
+      return state.hardware.recommended_h264;
+    case "av1":
+      return state.hardware.recommended_av1;
+    default:
+      return state.hardware.recommended_h265;
+  }
 });
 
 /** 当前是否使用硬件加速 */
@@ -62,6 +70,7 @@ export function useApp() {
       // 降级为 CPU
       state.hardware = {
         available_encoders: [],
+        recommended_h264: "libx264",
         recommended_h265: "libx265",
         recommended_av1: "libsvtav1",
         gpu_vendor: "cpu",

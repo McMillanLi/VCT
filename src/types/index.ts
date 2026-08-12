@@ -3,6 +3,7 @@
 /** 硬件加速检测结果 */
 export interface HardwareInfo {
   available_encoders: string[];
+  recommended_h264: string;
   recommended_h265: string;
   recommended_av1: string;
   gpu_vendor: GpuVendor;
@@ -23,10 +24,10 @@ export interface FileInfo {
 }
 
 /** 目标编码格式 */
-export type TargetCodec = "h265" | "av1";
+export type TargetCodec = "h264" | "h265" | "av1";
 
 /** 画质预设 */
-export type Preset = "fast" | "balanced" | "quality";
+export type Preset = "fast" | "balanced" | "quality" | "custom";
 
 /** 构建命令输入 */
 export interface BuildCommandInput {
@@ -35,6 +36,7 @@ export interface BuildCommandInput {
   target_codec: TargetCodec;
   preset: Preset;
   encoder: string;
+  custom_crf?: number;
 }
 
 /** 构建命令输出 */
@@ -62,6 +64,7 @@ export interface TranscodeTask {
   target_codec: TargetCodec;
   preset: Preset;
   encoder: string;
+  custom_crf: number;
   status: TaskStatus;
   /** 进度百分比 0-100 */
   progress: number;
@@ -109,5 +112,6 @@ export interface TranscodeRequest {
   target_codec: TargetCodec;
   preset: Preset;
   encoder: string;
+  custom_crf: number;
   duration: number;
 }

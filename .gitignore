@@ -28,5 +28,7 @@ npm-debug.log*
 
 # Test / output files
 test_video*.mp4
+test_*.mp4
+*_H264.mp4
 *_H265.mp4
 *_AV1.mp4

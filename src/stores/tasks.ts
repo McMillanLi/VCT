@@ -10,7 +10,7 @@ import {
   onStatus,
 } from "@/api/backend";
 import { useApp } from "@/stores/app";
-import { defaultOutputPath, genTaskId } from "@/utils/format";
+import { defaultOutputPath, outputSuffix, genTaskId } from "@/utils/format";
 import { notifyTaskCompleted, notifyTaskFailed, notifyAllDone } from "@/utils/notify";
 import type {
   TranscodeTask,
@@ -50,7 +50,7 @@ function computeOutputPath(file: FileInfo): string {
   const { state } = useApp();
   if (state.outputMode === "custom" && state.customOutputDir) {
     const base = file.name.replace(/\.[^.]+$/, "");
-    const suffix = state.targetCodec === "av1" ? "_AV1" : "_H265";
+    const suffix = outputSuffix(state.targetCodec);
     const dir = state.customOutputDir.replace(/[\\/]+$/, "");
     return `${dir}/${base}${suffix}.mp4`;
   }
@@ -68,6 +68,7 @@ function addFiles(files: FileInfo[]) {
       target_codec: state.targetCodec,
       preset: state.preset,
       encoder: recommendedEncoder.value,
+      custom_crf: state.customCrf,
       status: "pending",
       progress: 0,
       speed: 0,
@@ -139,6 +140,7 @@ async function startTask(id: string) {
       target_codec: task.target_codec,
       preset: task.preset,
       encoder: task.encoder,
+      custom_crf: task.custom_crf,
       duration: task.file.duration,
     });
   } catch (e: any) {

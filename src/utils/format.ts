@@ -58,10 +58,14 @@ export function dirOf(path: string): string {
 
 /** 根据目标编码生成输出文件名后缀 */
 export function outputSuffix(codec: TargetCodecLike): string {
-  return codec === "av1" ? "_AV1" : "_H265";
+  switch (codec) {
+    case "h264": return "_H264";
+    case "av1": return "_AV1";
+    default: return "_H265";
+  }
 }
 
-type TargetCodecLike = "h265" | "av1";
+type TargetCodecLike = "h264" | "h265" | "av1";
 
 /** 根据输入路径与目标编码生成默认输出路径 */
 export function defaultOutputPath(

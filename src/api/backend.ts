@@ -62,7 +62,8 @@ export async function detectHardware(): Promise<HardwareInfo> {
   if (isTauri) return invoke<HardwareInfo>("detect_hardware");
   // mock: 模拟检测到 NVIDIA
   return {
-    available_encoders: ["hevc_nvenc", "av1_nvenc", "h264_nvenc"],
+    available_encoders: ["h264_nvenc", "hevc_nvenc", "av1_nvenc"],
+    recommended_h264: "h264_nvenc",
     recommended_h265: "hevc_nvenc",
     recommended_av1: "av1_nvenc",
     gpu_vendor: "nvidia",

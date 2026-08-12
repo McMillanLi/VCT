@@ -15,6 +15,10 @@
   --text-secondary: #a8b0bd;
   --text-tertiary: #6b7280;
 
+  /* 主强调色（H.264 - 天蓝） */
+  --accent-h264: #3b9eff;
+  --accent-h264-soft: rgba(59, 158, 255, 0.15);
+
   /* 主强调色（H.265 - 靛紫） */
   --accent-h265: #7c6cff;
   --accent-h265-soft: rgba(124, 108, 255, 0.15);

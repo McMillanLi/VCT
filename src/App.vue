@@ -8,17 +8,40 @@ import ProgressPanel from "@/components/ProgressPanel.vue";
 import { useApp } from "@/stores/app";
 import { useTasks, subscribeTaskEvents } from "@/stores/tasks";
 import { isTauri } from "@/api/backend";
+import { confirmDialog } from "@/utils/confirm";
+import { isSameCodecFamily } from "@/utils/codec";
 
 const { state, init } = useApp();
-const { hasTasks, isProcessing, pendingTasks, startAll, clearAll } = useTasks();
+const { hasTasks, isProcessing, pendingTasks, list, startAll, clearAll } = useTasks();
 
 onMounted(async () => {
   await init();
   await subscribeTaskEvents();
 });
 
-function onStart() {
+async function onStart() {
   if (!hasTasks.value || isProcessing.value) return;
+
+  // 检查当前队列中是否存在任务：源视频编码 == 用户选中的目标编码
+  const hasSameCodec = list.some(
+    (t: { status: string; file: { codec: string } }) =>
+      (t.status === "pending" || t.status === "failed" || t.status === "canceled") &&
+      isSameCodecFamily(t.file.codec, state.targetCodec),
+  );
+
+  if (hasSameCodec) {
+    const ok = await confirmDialog(
+      "当前视频的编码格式与要转换的编码格式一致，确定转换吗？",
+      {
+        title: "编码一致性提醒",
+        kind: "warning",
+        okLabel: "确定",
+        cancelLabel: "取消",
+      },
+    );
+    if (!ok) return;
+  }
+
   startAll();
 }
 </script>

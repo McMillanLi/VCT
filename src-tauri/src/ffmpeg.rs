@@ -21,6 +21,7 @@ use tauri_plugin_shell::process::Command;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareInfo {
     pub available_encoders: Vec<String>,
+    pub recommended_h264: String,
     pub recommended_h265: String,
     pub recommended_av1: String,
     pub gpu_vendor: String,
@@ -47,6 +48,8 @@ pub struct BuildCommandInput {
     pub target_codec: String,
     pub preset: String,
     pub encoder: String,
+    #[serde(default)]
+    pub custom_crf: Option<u32>,
 }
 
 /// 构建命令的输出
@@ -116,6 +119,8 @@ async fn run_collect(cmd: Command, timeout_secs: u64) -> Result<(String, String,
 // ========================= 硬件检测 =========================
 
 /// 硬件编码器候选（按优先级排序）
+/// H.264: NVIDIA > Intel > AMD > MediaFoundation
+const H264_HW_CANDIDATES: &[&str] = &["h264_nvenc", "h264_qsv", "h264_amf", "h264_mf"];
 /// H.265: NVIDIA > Intel > AMD > MediaFoundation
 const H265_HW_CANDIDATES: &[&str] = &["hevc_nvenc", "hevc_qsv", "hevc_amf", "hevc_mf"];
 /// AV1:   NVIDIA > Intel > AMD > MediaFoundation
@@ -172,16 +177,20 @@ fn vendor_of(encoder: &str) -> &'static str {
 
 /// 探测系统硬件加速支持
 ///
-/// 并行测试 H.265 与 AV1 两类编码器，各取优先级最高的可用项；
-/// 全部不可用时降级为 CPU 软解（libx265 / libsvtav1）。
+/// 并行测试 H.264 / H.265 / AV1 三类编码器，各取优先级最高的可用项；
+/// 全部不可用时降级为 CPU 软解（libx264 / libx265 / libsvtav1）。
 #[tauri::command]
 pub async fn detect_hardware(app: AppHandle) -> Result<HardwareInfo, String> {
-    // 并行探测两种编码目标，缩短启动耗时
-    let (h265_hw, av1_hw) = tokio::join!(
+    // 并行探测三种编码目标，缩短启动耗时
+    let (h264_hw, h265_hw, av1_hw) = tokio::join!(
+        first_working(&app, H264_HW_CANDIDATES),
         first_working(&app, H265_HW_CANDIDATES),
         first_working(&app, AV1_HW_CANDIDATES),
     );
 
+    let recommended_h264 = h264_hw
+        .clone()
+        .unwrap_or_else(|| "libx264".to_string());
     let recommended_h265 = h265_hw
         .clone()
         .unwrap_or_else(|| "libx265".to_string());
@@ -191,7 +200,7 @@ pub async fn detect_hardware(app: AppHandle) -> Result<HardwareInfo, String> {
 
     // 汇总可用编码器列表（去重）
     let mut available: Vec<String> = Vec::new();
-    for enc in [&h265_hw, &av1_hw] {
+    for enc in [&h264_hw, &h265_hw, &av1_hw] {
         if let Some(e) = enc {
             if !available.contains(e) {
                 available.push(e.clone());
@@ -207,14 +216,15 @@ pub async fn detect_hardware(app: AppHandle) -> Result<HardwareInfo, String> {
         .to_string();
 
     let summary = format!(
-        "硬件检测完成: vendor={}, h265={}, av1={}, available={:?}",
-        gpu_vendor, recommended_h265, recommended_av1, available
+        "硬件检测完成: vendor={}, h264={}, h265={}, av1={}, available={:?}",
+        gpu_vendor, recommended_h264, recommended_h265, recommended_av1, available
     );
     log::info!("{}", summary);
     eprintln!("[VCT] {}", summary);
 
     Ok(HardwareInfo {
         available_encoders: available,
+        recommended_h264,
         recommended_h265,
         recommended_av1,
         gpu_vendor,
@@ -328,6 +338,8 @@ fn software_quality(preset: &str) -> (u32, &'static str) {
 pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
     let preset = input.preset.as_str();
     let enc = input.encoder.as_str();
+    let is_custom = preset == "custom";
+    let custom_val = input.custom_crf.unwrap_or(24);
     let (crf, _sw_preset) = software_quality(preset);
 
     let mut args: Vec<String> = Vec::with_capacity(24);
@@ -348,12 +360,12 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
         let nv_preset = match preset {
             "fast" => "p4",
             "quality" => "p7",
-            _ => "p5",
+            _ => "p5", // custom 和 balanced 共用 p5
         };
-        let cq: u32 = match preset {
-            "fast" => 30,
-            "quality" => 22,
-            _ => 26,
+        let cq: u32 = if is_custom {
+            custom_val
+        } else {
+            match preset { "fast" => 30, "quality" => 22, _ => 26 }
         };
         args.extend([
             "-c:v".into(), enc.into(),
@@ -370,10 +382,11 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
             "quality" => "slow",
             _ => "medium",
         };
+        let qsv_quality = if is_custom { custom_val } else { crf };
         args.extend([
             "-c:v".into(), enc.into(),
             "-preset".into(), qsv_preset.into(),
-            "-global_quality".into(), crf.to_string(),
+            "-global_quality".into(), qsv_quality.to_string(),
         ]);
     } else if enc.contains("amf") {
         // AMD AMF：CQP 固定 QP
@@ -382,12 +395,13 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
             "quality" => "quality",
             _ => "balanced",
         };
+        let amf_qp = if is_custom { custom_val } else { crf };
         args.extend([
             "-c:v".into(), enc.into(),
             "-quality".into(), amf_quality.into(),
             "-rc".into(), "cqp".into(),
-            "-qp_i".into(), crf.to_string(),
-            "-qp_p".into(), crf.to_string(),
+            "-qp_i".into(), amf_qp.to_string(),
+            "-qp_p".into(), amf_qp.to_string(),
         ]);
     } else if enc.ends_with("_mf") {
         // MediaFoundation：质量由 bitrate 控制，这里用 -quality
@@ -395,9 +409,26 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
             "-c:v".into(), enc.into(),
             "-quality".into(), preset.into(),
         ]);
+    } else if enc == "libx264" {
+        // 软解 H.264：CRF + preset
+        let (c, p) = if is_custom {
+            (custom_val, "medium")
+        } else {
+            software_quality(preset)
+        };
+        args.extend([
+            "-c:v".into(), "libx264".into(),
+            "-preset".into(), p.into(),
+            "-crf".into(), c.to_string(),
+            "-pix_fmt".into(), "yuv420p".into(),
+        ]);
     } else if enc == "libx265" {
         // 软解 H.265：CRF + preset，抑制 x265 日志噪音
-        let (c, p) = software_quality(preset);
+        let (c, p) = if is_custom {
+            (custom_val, "medium")
+        } else {
+            software_quality(preset)
+        };
         args.extend([
             "-c:v".into(), "libx265".into(),
             "-preset".into(), p.into(),
@@ -411,10 +442,10 @@ pub fn build_args(input: &BuildCommandInput) -> Vec<String> {
             "quality" => "3",
             _ => "5",
         };
-        let av1_crf: u32 = match preset {
-            "fast" => 32,
-            "quality" => 24,
-            _ => 28,
+        let av1_crf: u32 = if is_custom {
+            custom_val
+        } else {
+            match preset { "fast" => 32, "quality" => 24, _ => 28 }
         };
         args.extend([
             "-c:v".into(), "libsvtav1".into(),
@@ -461,12 +492,20 @@ mod tests {
     use super::*;
 
     fn input(encoder: &str, preset: &str) -> BuildCommandInput {
+        let codec = if encoder.contains("av1") {
+            "av1"
+        } else if encoder.contains("h264") || encoder == "libx264" {
+            "h264"
+        } else {
+            "h265"
+        };
         BuildCommandInput {
             input_path: "in.mp4".into(),
             output_path: "out.mp4".into(),
-            target_codec: if encoder.contains("av1") { "av1" } else { "h265" }.into(),
+            target_codec: codec.into(),
             preset: preset.into(),
             encoder: encoder.into(),
+            custom_crf: None,
         }
     }
 
@@ -506,6 +545,14 @@ mod tests {
     }
 
     #[test]
+    fn build_args_h264_nvenc() {
+        let args = build_args(&input("h264_nvenc", "fast"));
+        assert_has(&args, &["-c:v", "h264_nvenc"]);
+        assert_has(&args, &["-preset", "p4"]);
+        assert_has(&args, &["-cq", "30"]);
+    }
+
+    #[test]
     fn build_args_qsv() {
         let args = build_args(&input("hevc_qsv", "quality"));
         assert_has(&args, &["-c:v", "hevc_qsv"]);
@@ -528,6 +575,37 @@ mod tests {
         assert_has(&args, &["-preset", "slow"]);
         assert_has(&args, &["-crf", "20"]);
         assert!(args.contains(&"-x265-params".into()));
+    }
+
+    #[test]
+    fn build_args_libx264() {
+        let args = build_args(&input("libx264", "balanced"));
+        assert_has(&args, &["-c:v", "libx264"]);
+        assert_has(&args, &["-preset", "medium"]);
+        assert_has(&args, &["-crf", "24"]);
+        assert_has(&args, &["-pix_fmt", "yuv420p"]);
+    }
+
+    #[test]
+    fn build_args_custom_crf() {
+        let mut inp = input("libx264", "custom");
+        inp.custom_crf = Some(18);
+        let args = build_args(&inp);
+        assert_has(&args, &["-c:v", "libx264"]);
+        assert_has(&args, &["-preset", "medium"]);
+        assert_has(&args, &["-crf", "18"]);
+
+        // NVENC custom
+        let mut nv = input("hevc_nvenc", "custom");
+        nv.custom_crf = Some(20);
+        let nv_args = build_args(&nv);
+        assert_has(&nv_args, &["-cq", "20"]);
+
+        // AV1 custom
+        let mut av1 = input("libsvtav1", "custom");
+        av1.custom_crf = Some(25);
+        let av1_args = build_args(&av1);
+        assert_has(&av1_args, &["-crf", "25"]);
     }
 
     #[test]

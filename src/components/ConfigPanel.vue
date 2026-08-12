@@ -8,6 +8,7 @@ import type { TargetCodec, Preset } from "@/types";
 const { state, recommendedEncoder, isHardwareAccel, setNotificationsEnabled } = useApp();
 
 const codecs: { value: TargetCodec; label: string; sub: string }[] = [
+  { value: "h264", label: "H.264", sub: "AVC · 兼容性最好" },
   { value: "h265", label: "H.265", sub: "HEVC · 高压缩" },
   { value: "av1", label: "AV1", sub: "次世代 · 更高压缩" },
 ];
@@ -16,19 +17,31 @@ const presets: { value: Preset; label: string; desc: string }[] = [
   { value: "fast", label: "极速", desc: "体积略大 · 速度最快" },
   { value: "balanced", label: "均衡", desc: "推荐 · 画质体积兼顾" },
   { value: "quality", label: "高质量", desc: "体积最小 · 速度较慢" },
+  { value: "custom", label: "自定义", desc: "手动指定 CRF / CQ" },
 ];
+
+/** 当前编码格式对应的 CRF/CQ 范围提示 */
+const crfRange = computed(() => {
+  if (state.targetCodec === "av1") return { min: 0, max: 63, hint: "0-63 · 越小质量越高" };
+  return { min: 0, max: 51, hint: "0-51 · 越小质量越高" };
+});
 
 const encoderLabel = computed(() => {
   const enc = recommendedEncoder.value;
   const map: Record<string, string> = {
+    h264_nvenc: "NVIDIA NVENC · h264_nvenc",
     hevc_nvenc: "NVIDIA NVENC · hevc_nvenc",
     av1_nvenc: "NVIDIA NVENC · av1_nvenc",
+    h264_amf: "AMD AMF · h264_amf",
     hevc_amf: "AMD AMF · hevc_amf",
     av1_amf: "AMD AMF · av1_amf",
+    h264_qsv: "Intel QSV · h264_qsv",
     hevc_qsv: "Intel QSV · hevc_qsv",
     av1_qsv: "Intel QSV · av1_qsv",
-    hevc_videotoolbox: "Apple VideoToolbox",
-    av1_videotoolbox: "Apple VideoToolbox",
+    h264_videotoolbox: "Apple VideoToolbox · h264",
+    hevc_videotoolbox: "Apple VideoToolbox · hevc",
+    av1_videotoolbox: "Apple VideoToolbox · av1",
+    libx264: "CPU 软解 · libx264",
     libx265: "CPU 软解 · libx265",
     libsvtav1: "CPU 软解 · libsvtav1",
   };
@@ -84,6 +97,19 @@ async function pickOutputDir() {
           <span class="preset-desc">{{ p.desc }}</span>
         </button>
       </div>
+      <!-- 自定义 CRF 输入 -->
+      <div v-if="state.preset === 'custom'" class="crf-input-row">
+        <label class="crf-label">CRF / CQ</label>
+        <input
+          :value="state.customCrf"
+          class="crf-input"
+          type="number"
+          :min="crfRange.min"
+          :max="crfRange.max"
+          @input="state.customCrf = Math.max(crfRange.min, Math.min(crfRange.max, Number(($event.target as HTMLInputElement).value) || 0))"
+        />
+        <span class="crf-hint">{{ crfRange.hint }}</span>
+      </div>
     </div>
 
     <div class="divider" />
@@ -92,7 +118,7 @@ async function pickOutputDir() {
     <div class="config-row">
       <div class="config-label">
         <span class="label-text">输出位置</span>
-        <span class="label-hint">默认在源文件同目录生成 _{{ state.targetCodec === "av1" ? "AV1" : "H265" }}.mp4</span>
+        <span class="label-hint">默认在源文件同目录生成 _{{ state.targetCodec === "av1" ? "AV1" : state.targetCodec === "h264" ? "H264" : "H265" }}.mp4</span>
       </div>
       <div class="output-group">
         <button
@@ -207,6 +233,11 @@ async function pickOutputDir() {
   border-color: var(--border-strong);
   background: var(--bg-hover);
 }
+.codec-btn.active.h264 {
+  border-color: var(--accent-h264);
+  background: var(--accent-h264-soft);
+  box-shadow: 0 0 0 1px var(--accent-h264);
+}
 .codec-btn.active.h265 {
   border-color: var(--accent-h265);
   background: var(--accent-h265-soft);
@@ -221,6 +252,9 @@ async function pickOutputDir() {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+}
+.codec-btn.active.h264 .codec-label {
+  color: var(--accent-h264);
 }
 .codec-btn.active.h265 .codec-label {
   color: var(--accent-h265);
@@ -271,6 +305,41 @@ async function pickOutputDir() {
   font-size: 10px;
   color: var(--text-tertiary);
   white-space: nowrap;
+}
+
+/* 自定义 CRF 输入 */
+.crf-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 0;
+}
+.crf-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.crf-input {
+  width: 64px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+.crf-input:focus {
+  border-color: var(--accent);
+}
+.crf-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 /* 输出位置 */

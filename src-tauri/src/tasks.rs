@@ -30,9 +30,11 @@ pub struct TranscodeRequest {
     pub task_id: String,
     pub input_path: String,
     pub output_path: String,
-    pub target_codec: String, // "h265" | "av1"
-    pub preset: String,       // "fast" | "balanced" | "quality"
+    pub target_codec: String, // "h264" | "h265" | "av1"
+    pub preset: String,       // "fast" | "balanced" | "quality" | "custom"
     pub encoder: String,
+    #[serde(default)]
+    pub custom_crf: Option<u32>,
     pub duration: f64, // 用于进度百分比计算
 }
 
@@ -107,6 +109,7 @@ pub async fn start_transcode(
         target_codec: req.target_codec.clone(),
         preset: req.preset.clone(),
         encoder: req.encoder.clone(),
+        custom_crf: req.custom_crf,
     };
     let args = build_args(&input);
 
