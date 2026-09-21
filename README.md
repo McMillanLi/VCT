@@ -1,7 +1,6 @@
 # VCT (Video Converter)— 极简可视化视频转码工具
 
-让小白也能上手操作的极简可视化视频转码工具。基于 **Tauri v2 + Vue 3 + TypeScript + Vite** 与内置 **FFmpeg sidecar** 的桌面端视频转码应用。
-支持在 **H.264 / H.265 (HEVC) / AV1** 三种编码之间灵活互转，智能硬件加速检测、可视化进度、自定义画质参数，一键完成视频转码。
+让小白也能上手操作的极简可视化视频转码工具。支持在 **H.264 / H.265 (HEVC) / AV1** 三种编码之间灵活互转和老旧编码的更新，智能硬件加速检测、可视化进度、自定义画质参数，一键完成视频转码。
 
 ![tech](https://img.shields.io/badge/Tauri-v2-orange) ![tech](https://img.shields.io/badge/Vue-3-brightgreen) ![tech](https://img.shields.io/badge/Rust-stable-dea584) ![tech](https://img.shields.io/badge/FFmpeg-sidecar-blueviolet)
 
@@ -21,6 +20,14 @@
 ## 截图
 
 <img width="882" height="642" alt="screenshot" src="https://github.com/user-attachments/assets/1bba3c28-41d4-4794-8c38-84be777a36b5" />
+
+
+## 使用教程
+
+去Release地址下载安装包
+Release 地址： https://github.com/McMillanLi/VCT/releases/tag/v0.2.0
+点击VCT_0.2.0_x64-setup.exe下载安装包
+安装包下载后一直点下一步直至安装完成，安装完成后双击图标即可开始使用
 
 
 ## 目录结构
