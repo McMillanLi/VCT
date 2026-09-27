@@ -14,9 +14,9 @@ const codecs: { value: TargetCodec; label: string; sub: string }[] = [
 ];
 
 const presets: { value: Preset; label: string; desc: string }[] = [
-  { value: "fast", label: "极速", desc: "体积最小 · 速度最快" },
-  { value: "balanced", label: "均衡", desc: "推荐 · 画质体积兼顾" },
-  { value: "quality", label: "高质量", desc: "画质最高 · 体积较大" },
+  { value: "fast", label: "极速·28", desc: "体积最小 · 画质较低" },
+  { value: "balanced", label: "均衡·24", desc: "推荐 · 画质体积兼顾" },
+  { value: "quality", label: "高质量·20", desc: "画质最高 · 体积较大" },
   { value: "custom", label: "自定义", desc: "手动指定 CRF / CQ" },
 ];
 
@@ -83,7 +83,7 @@ async function pickOutputDir() {
     <div class="config-row">
       <div class="config-label">
         <span class="label-text">画质预设</span>
-        <span class="label-hint">CRF / CQ 与编码速度</span>
+        <span class="label-hint">CRF / CQ 质量档位</span>
       </div>
       <div class="preset-group">
         <button
