@@ -14,9 +14,9 @@ const codecs: { value: TargetCodec; label: string; sub: string }[] = [
 ];
 
 const presets: { value: Preset; label: string; desc: string }[] = [
-  { value: "fast", label: "极速", desc: "体积略大 · 速度最快" },
+  { value: "fast", label: "极速", desc: "体积最小 · 速度最快" },
   { value: "balanced", label: "均衡", desc: "推荐 · 画质体积兼顾" },
-  { value: "quality", label: "高质量", desc: "体积最小 · 速度较慢" },
+  { value: "quality", label: "高质量", desc: "画质最高 · 体积较大" },
   { value: "custom", label: "自定义", desc: "手动指定 CRF / CQ" },
 ];
 
