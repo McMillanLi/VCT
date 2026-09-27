@@ -13,12 +13,26 @@ const codecs: { value: TargetCodec; label: string; sub: string }[] = [
   { value: "av1", label: "AV1", sub: "次世代 · 更高压缩" },
 ];
 
-const presets: { value: Preset; label: string; desc: string }[] = [
-  { value: "fast", label: "极速·28", desc: "体积最小 · 画质较低" },
-  { value: "balanced", label: "均衡·24", desc: "推荐 · 画质体积兼顾" },
-  { value: "quality", label: "高质量·20", desc: "画质最高 · 体积较大" },
-  { value: "custom", label: "自定义", desc: "手动指定 CRF / CQ" },
-];
+/** 根据当前推荐编码器，确定质量参数名与三档数值（与 Rust build_args 实际取值保持一致） */
+const qualitySpec = computed<{ key: string; vals: Record<"fast" | "balanced" | "quality", number> }>(() => {
+  const enc = recommendedEncoder.value;
+  if (enc.includes("nvenc")) return { key: "cq", vals: { fast: 30, balanced: 26, quality: 22 } };
+  if (enc.includes("qsv")) return { key: "q", vals: { fast: 28, balanced: 24, quality: 20 } };
+  if (enc.includes("amf")) return { key: "qp", vals: { fast: 28, balanced: 24, quality: 20 } };
+  if (enc === "libsvtav1") return { key: "crf", vals: { fast: 32, balanced: 28, quality: 24 } };
+  // libx264 / libx265 / 未知回退
+  return { key: "crf", vals: { fast: 28, balanced: 24, quality: 20 } };
+});
+
+const presets = computed<{ value: Preset; label: string; desc: string }[]>(() => {
+  const { key, vals } = qualitySpec.value;
+  return [
+    { value: "fast", label: `极速·${key}${vals.fast}`, desc: "体积最小 · 画质较低" },
+    { value: "balanced", label: `均衡·${key}${vals.balanced}`, desc: "推荐 · 画质体积兼顾" },
+    { value: "quality", label: `高质量·${key}${vals.quality}`, desc: "画质最高 · 体积较大" },
+    { value: "custom", label: "自定义", desc: `手动指定 ${key.toUpperCase()} 值` },
+  ];
+});
 
 /** 当前编码格式对应的 CRF/CQ 范围提示 */
 const crfRange = computed(() => {
@@ -83,7 +97,7 @@ async function pickOutputDir() {
     <div class="config-row">
       <div class="config-label">
         <span class="label-text">画质预设</span>
-        <span class="label-hint">CRF / CQ 质量档位</span>
+        <span class="label-hint">{{ state.preset === "custom" ? crfRange.hint : "CRF / CQ 质量档位" }}</span>
       </div>
       <div class="preset-group">
         <button
@@ -97,9 +111,8 @@ async function pickOutputDir() {
           <span class="preset-desc">{{ p.desc }}</span>
         </button>
       </div>
-      <!-- 自定义 CRF 输入 -->
+      <!-- 自定义 CRF/CQ 输入（仅数字；范围说明在左侧标签旁） -->
       <div v-if="state.preset === 'custom'" class="crf-input-row">
-        <label class="crf-label">CRF / CQ</label>
         <input
           :value="state.customCrf"
           class="crf-input"
@@ -108,7 +121,6 @@ async function pickOutputDir() {
           :max="crfRange.max"
           @input="state.customCrf = Math.max(crfRange.min, Math.min(crfRange.max, Number(($event.target as HTMLInputElement).value) || 0))"
         />
-        <span class="crf-hint">{{ crfRange.hint }}</span>
       </div>
     </div>
 
@@ -311,15 +323,6 @@ async function pickOutputDir() {
 .crf-input-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding-left: 0;
-}
-.crf-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  white-space: nowrap;
 }
 .crf-input {
   width: 64px;
@@ -336,10 +339,6 @@ async function pickOutputDir() {
 }
 .crf-input:focus {
   border-color: var(--accent);
-}
-.crf-hint {
-  font-size: 11px;
-  color: var(--text-tertiary);
 }
 
 /* 输出位置 */
