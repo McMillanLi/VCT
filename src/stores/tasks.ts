@@ -10,7 +10,7 @@ import {
   onStatus,
 } from "@/api/backend";
 import { useApp } from "@/stores/app";
-import { defaultOutputPath, outputSuffix, genTaskId } from "@/utils/format";
+import { defaultOutputPath, outputSuffix, qualityTag, genTaskId } from "@/utils/format";
 import { notifyTaskCompleted, notifyTaskFailed, notifyAllDone } from "@/utils/notify";
 import type {
   TranscodeTask,
@@ -45,16 +45,17 @@ export const isAllDone = computed(
   () => tasks.length > 0 && !activeTask.value && pendingTasks.value.length === 0,
 );
 
-/** 计算输出路径：同目录 or 自定义目录 */
+/** 计算输出路径：同目录 or 自定义目录（文件名带质量标签，如 _H265_cq26） */
 function computeOutputPath(file: FileInfo): string {
-  const { state } = useApp();
+  const { state, recommendedEncoder } = useApp();
+  const quality = qualityTag(recommendedEncoder.value, state.preset, state.customCrf);
   if (state.outputMode === "custom" && state.customOutputDir) {
     const base = file.name.replace(/\.[^.]+$/, "");
-    const suffix = outputSuffix(state.targetCodec);
+    const suffix = outputSuffix(state.targetCodec, quality);
     const dir = state.customOutputDir.replace(/[\\/]+$/, "");
     return `${dir}/${base}${suffix}.mp4`;
   }
-  return defaultOutputPath(file.path, state.targetCodec);
+  return defaultOutputPath(file.path, state.targetCodec, quality);
 }
 
 /** 添加文件为待转码任务 */

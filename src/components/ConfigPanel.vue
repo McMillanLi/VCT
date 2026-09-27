@@ -3,6 +3,12 @@ import { computed } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useApp } from "@/stores/app";
 import { isTauri } from "@/api/backend";
+import {
+  qualityParamName,
+  effectiveQuality,
+  outputSuffix,
+  qualityTag,
+} from "@/utils/format";
 import type { TargetCodec, Preset } from "@/types";
 
 const { state, recommendedEncoder, isHardwareAccel, setNotificationsEnabled } = useApp();
@@ -13,12 +19,25 @@ const codecs: { value: TargetCodec; label: string; sub: string }[] = [
   { value: "av1", label: "AV1", sub: "次世代 · 更高压缩" },
 ];
 
-const presets: { value: Preset; label: string; desc: string }[] = [
-  { value: "fast", label: "极速", desc: "体积略大 · 速度最快" },
-  { value: "balanced", label: "均衡", desc: "推荐 · 画质体积兼顾" },
-  { value: "quality", label: "高质量", desc: "体积最小 · 速度较慢" },
-  { value: "custom", label: "自定义", desc: "手动指定 CRF / CQ" },
-];
+/** 当前质量参数名（cq/q/qp/crf），取自单一口径入口 */
+const qualityKey = computed(() => qualityParamName(recommendedEncoder.value));
+
+const presets = computed<{ value: Preset; label: string; desc: string }[]>(() => {
+  const enc = recommendedEncoder.value;
+  const labelOf = (p: Exclude<Preset, "custom">) =>
+    `${qualityKey.value}${effectiveQuality(enc, p, state.customCrf)}`;
+  return [
+    { value: "fast", label: `极速·${labelOf("fast")}`, desc: "体积最小 · 画质较低" },
+    { value: "balanced", label: `均衡·${labelOf("balanced")}`, desc: "推荐 · 画质体积兼顾" },
+    { value: "quality", label: `高质量·${labelOf("quality")}`, desc: "画质最高 · 体积较大" },
+    { value: "custom", label: "自定义", desc: `手动指定 ${qualityKey.value.toUpperCase()} 值` },
+  ];
+});
+
+/** 输出文件名示例后缀，如 _H265_cq26.mp4 */
+const outputFileHint = computed(() =>
+  `${outputSuffix(state.targetCodec, qualityTag(recommendedEncoder.value, state.preset, state.customCrf))}.mp4`,
+);
 
 /** 当前编码格式对应的 CRF/CQ 范围提示 */
 const crfRange = computed(() => {
@@ -83,7 +102,7 @@ async function pickOutputDir() {
     <div class="config-row">
       <div class="config-label">
         <span class="label-text">画质预设</span>
-        <span class="label-hint">CRF / CQ 与编码速度</span>
+        <span class="label-hint">{{ state.preset === "custom" ? crfRange.hint : "CRF / CQ 质量档位" }}</span>
       </div>
       <div class="preset-group">
         <button
@@ -97,9 +116,8 @@ async function pickOutputDir() {
           <span class="preset-desc">{{ p.desc }}</span>
         </button>
       </div>
-      <!-- 自定义 CRF 输入 -->
+      <!-- 自定义 CRF/CQ 输入（仅数字；范围说明在左侧标签旁） -->
       <div v-if="state.preset === 'custom'" class="crf-input-row">
-        <label class="crf-label">CRF / CQ</label>
         <input
           :value="state.customCrf"
           class="crf-input"
@@ -108,7 +126,6 @@ async function pickOutputDir() {
           :max="crfRange.max"
           @input="state.customCrf = Math.max(crfRange.min, Math.min(crfRange.max, Number(($event.target as HTMLInputElement).value) || 0))"
         />
-        <span class="crf-hint">{{ crfRange.hint }}</span>
       </div>
     </div>
 
@@ -118,7 +135,7 @@ async function pickOutputDir() {
     <div class="config-row">
       <div class="config-label">
         <span class="label-text">输出位置</span>
-        <span class="label-hint">默认在源文件同目录生成 _{{ state.targetCodec === "av1" ? "AV1" : state.targetCodec === "h264" ? "H264" : "H265" }}.mp4</span>
+        <span class="label-hint">默认在源文件同目录生成 {{ outputFileHint }}</span>
       </div>
       <div class="output-group">
         <button
@@ -311,15 +328,6 @@ async function pickOutputDir() {
 .crf-input-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding-left: 0;
-}
-.crf-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  white-space: nowrap;
 }
 .crf-input {
   width: 64px;
@@ -336,10 +344,6 @@ async function pickOutputDir() {
 }
 .crf-input:focus {
   border-color: var(--accent);
-}
-.crf-hint {
-  font-size: 11px;
-  color: var(--text-tertiary);
 }
 
 /* 输出位置 */
