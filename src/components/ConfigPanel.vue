@@ -3,6 +3,12 @@ import { computed } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useApp } from "@/stores/app";
 import { isTauri } from "@/api/backend";
+import {
+  qualityParamName,
+  effectiveQuality,
+  outputSuffix,
+  qualityTag,
+} from "@/utils/format";
 import type { TargetCodec, Preset } from "@/types";
 
 const { state, recommendedEncoder, isHardwareAccel, setNotificationsEnabled } = useApp();
@@ -13,26 +19,25 @@ const codecs: { value: TargetCodec; label: string; sub: string }[] = [
   { value: "av1", label: "AV1", sub: "次世代 · 更高压缩" },
 ];
 
-/** 根据当前推荐编码器，确定质量参数名与三档数值（与 Rust build_args 实际取值保持一致） */
-const qualitySpec = computed<{ key: string; vals: Record<"fast" | "balanced" | "quality", number> }>(() => {
-  const enc = recommendedEncoder.value;
-  if (enc.includes("nvenc")) return { key: "cq", vals: { fast: 30, balanced: 26, quality: 22 } };
-  if (enc.includes("qsv")) return { key: "q", vals: { fast: 28, balanced: 24, quality: 20 } };
-  if (enc.includes("amf")) return { key: "qp", vals: { fast: 28, balanced: 24, quality: 20 } };
-  if (enc === "libsvtav1") return { key: "crf", vals: { fast: 32, balanced: 28, quality: 24 } };
-  // libx264 / libx265 / 未知回退
-  return { key: "crf", vals: { fast: 28, balanced: 24, quality: 20 } };
-});
+/** 当前质量参数名（cq/q/qp/crf），取自单一口径入口 */
+const qualityKey = computed(() => qualityParamName(recommendedEncoder.value));
 
 const presets = computed<{ value: Preset; label: string; desc: string }[]>(() => {
-  const { key, vals } = qualitySpec.value;
+  const enc = recommendedEncoder.value;
+  const labelOf = (p: Exclude<Preset, "custom">) =>
+    `${qualityKey.value}${effectiveQuality(enc, p, state.customCrf)}`;
   return [
-    { value: "fast", label: `极速·${key}${vals.fast}`, desc: "体积最小 · 画质较低" },
-    { value: "balanced", label: `均衡·${key}${vals.balanced}`, desc: "推荐 · 画质体积兼顾" },
-    { value: "quality", label: `高质量·${key}${vals.quality}`, desc: "画质最高 · 体积较大" },
-    { value: "custom", label: "自定义", desc: `手动指定 ${key.toUpperCase()} 值` },
+    { value: "fast", label: `极速·${labelOf("fast")}`, desc: "体积最小 · 画质较低" },
+    { value: "balanced", label: `均衡·${labelOf("balanced")}`, desc: "推荐 · 画质体积兼顾" },
+    { value: "quality", label: `高质量·${labelOf("quality")}`, desc: "画质最高 · 体积较大" },
+    { value: "custom", label: "自定义", desc: `手动指定 ${qualityKey.value.toUpperCase()} 值` },
   ];
 });
+
+/** 输出文件名示例后缀，如 _H265_cq26.mp4 */
+const outputFileHint = computed(() =>
+  `${outputSuffix(state.targetCodec, qualityTag(recommendedEncoder.value, state.preset, state.customCrf))}.mp4`,
+);
 
 /** 当前编码格式对应的 CRF/CQ 范围提示 */
 const crfRange = computed(() => {
@@ -130,7 +135,7 @@ async function pickOutputDir() {
     <div class="config-row">
       <div class="config-label">
         <span class="label-text">输出位置</span>
-        <span class="label-hint">默认在源文件同目录生成 _{{ state.targetCodec === "av1" ? "AV1" : state.targetCodec === "h264" ? "H264" : "H265" }}.mp4</span>
+        <span class="label-hint">默认在源文件同目录生成 {{ outputFileHint }}</span>
       </div>
       <div class="output-group">
         <button

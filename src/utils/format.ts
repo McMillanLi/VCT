@@ -1,5 +1,9 @@
 // 格式化工具函数
 
+import type { Preset } from "@/types";
+
+type TargetCodecLike = "h264" | "h265" | "av1";
+
 /** 字节数 -> 人类可读（如 1.5 GB） */
 export function formatSize(bytes: number): string {
   if (!bytes || bytes <= 0) return "—";
@@ -56,25 +60,68 @@ export function dirOf(path: string): string {
   return idx >= 0 ? path.slice(0, idx) : path;
 }
 
-/** 根据目标编码生成输出文件名后缀 */
-export function outputSuffix(codec: TargetCodecLike): string {
-  switch (codec) {
-    case "h264": return "_H264";
-    case "av1": return "_AV1";
-    default: return "_H265";
-  }
+/** 根据目标编码生成输出文件名后缀；可追加质量标签（如 _H265_cq26） */
+export function outputSuffix(codec: TargetCodecLike, quality?: string): string {
+  const codecTag =
+    codec === "h264" ? "_H264" : codec === "av1" ? "_AV1" : "_H265";
+  return quality ? `${codecTag}_${quality}` : codecTag;
 }
-
-type TargetCodecLike = "h264" | "h265" | "av1";
 
 /** 根据输入路径与目标编码生成默认输出路径 */
 export function defaultOutputPath(
   inputPath: string,
   codec: TargetCodecLike,
+  quality?: string,
 ): string {
   const dot = inputPath.lastIndexOf(".");
   const base = dot > 0 ? inputPath.slice(0, dot) : inputPath;
-  return `${base}${outputSuffix(codec)}.mp4`;
+  return `${base}${outputSuffix(codec, quality)}.mp4`;
+}
+
+// ---- 质量参数（CRF / CQ / QP）单一口径入口 ----
+// 取值必须与 Rust build_args 实际传给 FFmpeg 的参数保持一致。
+
+/** 编码器使用的质量参数名：NVENC=cq · QSV=q · AMF=qp · 软编=crf */
+export function qualityParamName(encoder: string): string {
+  if (encoder.includes("nvenc")) return "cq";
+  if (encoder.includes("qsv")) return "q";
+  if (encoder.includes("amf")) return "qp";
+  return "crf";
+}
+
+type FixedPreset = Exclude<Preset, "custom">;
+
+/** 固定预设三档质量值（NVENC 与 libsvtav1 与其余编码器不同） */
+function fixedQualityVals(
+  encoder: string,
+): Record<FixedPreset, number> {
+  if (encoder.includes("nvenc")) {
+    return { fast: 30, balanced: 26, quality: 22 };
+  }
+  if (encoder === "libsvtav1") {
+    return { fast: 32, balanced: 28, quality: 24 };
+  }
+  // QSV / AMF / libx264 / libx265 / 未知回退
+  return { fast: 28, balanced: 24, quality: 20 };
+}
+
+/** 任务实际生效的质量值（自定义预设取 customCrf） */
+export function effectiveQuality(
+  encoder: string,
+  preset: Preset,
+  customCrf: number,
+): number {
+  if (preset === "custom") return customCrf;
+  return fixedQualityVals(encoder)[preset];
+}
+
+/** 质量标签（如 cq26），用于列表展示与文件名 */
+export function qualityTag(
+  encoder: string,
+  preset: Preset,
+  customCrf: number,
+): string {
+  return `${qualityParamName(encoder)}${effectiveQuality(encoder, preset, customCrf)}`;
 }
 
 /** 生成唯一任务 ID */

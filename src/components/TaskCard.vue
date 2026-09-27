@@ -10,6 +10,7 @@ import {
   formatEta,
   formatSpeed,
   resolutionLabel,
+  qualityTag,
 } from "@/utils/format";
 import type { TranscodeTask } from "@/types";
 
@@ -40,7 +41,14 @@ const isRunning = computed(() => props.task.status === "running");
 const isPending = computed(() => props.task.status === "pending");
 const isFailed = computed(() => props.task.status === "failed" || props.task.status === "canceled");
 const isCompleted = computed(() => props.task.status === "completed");
-const codecBadge = computed(() => (props.task.target_codec === "av1" ? "AV1" : "H.265"));
+const codecBadge = computed(() => {
+  const map: Record<string, string> = { h264: "H.264", h265: "H.265", av1: "AV1" };
+  return map[props.task.target_codec] ?? "H.265";
+});
+/** 实际生效的质量标签，如 cq26 / crf28 */
+const qualityLabel = computed(() =>
+  qualityTag(props.task.encoder, props.task.preset, props.task.custom_crf),
+);
 
 async function openFolder() {
   if (!isTauri) return;
@@ -78,6 +86,7 @@ async function openFolder() {
       </div>
       <div class="task-actions">
         <span class="codec-badge" :class="task.target_codec">{{ codecBadge }}</span>
+        <span class="quality-tag">{{ qualityLabel }}</span>
         <span class="status-tag" :style="{ color: statusMeta.color }">
           <span v-if="isRunning" class="status-pulse" :style="{ background: statusMeta.color }" />
           {{ statusMeta.label }}
@@ -230,9 +239,23 @@ async function openFolder() {
   background: var(--accent-h265-soft);
   color: var(--accent-h265);
 }
+.codec-badge.h264 {
+  background: var(--accent-h264-soft);
+  color: var(--accent-h264);
+}
 .codec-badge.av1 {
   background: var(--accent-av1-soft);
   color: var(--accent-av1);
+}
+.quality-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 .status-tag {
   display: inline-flex;
